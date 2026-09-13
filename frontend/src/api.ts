@@ -77,6 +77,29 @@ export const api = {
   // ai
   aiTips: () => req("/ai/tips", { method: "POST", body: JSON.stringify({}) }),
 
+  // budgets
+  listBudgets: (scope?: string) =>
+    req(`/budgets${scope ? `?scope=${scope}` : ""}`),
+  createBudget: (body: any) =>
+    req("/budgets", { method: "POST", body: JSON.stringify(body) }),
+  updateBudget: (id: string, body: any) =>
+    req(`/budgets/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBudget: (id: string) => req(`/budgets/${id}`, { method: "DELETE" }),
+  budgetOverview: (scope = "personal", year?: number, month?: number) => {
+    const p = new URLSearchParams({ scope });
+    if (year) p.set("year", String(year));
+    if (month) p.set("month", String(month));
+    return req(`/budget/overview?${p.toString()}`);
+  },
+
+  // calendar
+  calendar: (scope = "all", year?: number, month?: number) => {
+    const p = new URLSearchParams({ scope });
+    if (year) p.set("year", String(year));
+    if (month) p.set("month", String(month));
+    return req(`/calendar?${p.toString()}`);
+  },
+
   // folders + files
   listFolders: (q?: string) =>
     req(`/folders${q ? `?q=${encodeURIComponent(q)}` : ""}`),

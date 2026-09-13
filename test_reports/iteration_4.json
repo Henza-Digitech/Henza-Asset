@@ -1,0 +1,58 @@
+{
+  "summary": "Full-stack testing of new Kalender Keuangan (Calendar) + Anggaran (Budget) features. Backend: created /app/backend/tests/test_budget_calendar.py with 11 pytest tests covering budget CRUD (create/list w/ scope filter/update/update-404/delete/delete-404), /budget/overview shape + remaining=income-total_budget invariant + spent-reflects-expense (create expense -> overview spent increases by same amount), and /calendar shape + scope filter (business tx does not leak into personal calendar). All 11 tests PASS against the public EXPO_PUBLIC_BACKEND_URL. Frontend (mobile 390x844): 'Lainnya' tab shows new 'Kalender Keuangan' (menu-calendar) + 'Anggaran' (menu-budget) rows. Calendar screen (/calendar) verified: month prev/next navigation (Sep 2026 -> Agustus 2026 -> Sep 2026), scope toggles (Semua/Pribadi/Perusahaan) all present and switchable, tapping a day opens the detail bottom sheet showing that day's transactions (empty state 'Tidak ada transaksi pada tanggal ini' when none), day cells show shortIDR (e.g. '123.5rb') when transactions exist, today's date highlighted, back button navigates. Budget screen (/budget) verified: Pribadi/Perusahaan scope toggle, summary card renders Pemasukan/Total Anggaran/Sisa Saldo, over-budget warning banner 'Anggaran melebihi pemasukan bulan ini.' appears when remaining<0, add via + opens modal (with konsumsi as default), amount input with thousands separator + save creates card, per-category card shows CategoryIcon + 'Terpakai Rp X dari Rp Y', progress bar fill %, 'Sisa Rp X' or 'Lebih Rp X' + percentage, tap card opens 'Edit Anggaran' modal pre-filled correctly. Deprecated packages detected: shadow* style props, Image style.resizeMode, and props.pointerEvents (same as previous iteration; not new to these features).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/budget/overview", "issue": "Budget overview only reports 'spent' for categories that have an existing budget row. Expenses in categories without a matching budget entry are silently omitted from the per-category breakdown (they are also not summed into total_spent). Consider surfacing an 'unbudgeted_spent' bucket so users can see spend that has no budget. Current behavior may be intentional but is undocumented."},
+      {"endpoint": "GET /api/budget/overview", "issue": "'income' aggregates ALL income transactions in the month regardless of category; ties to 'remaining = income - total_budget' correctly. However when scope='all' the endpoint defaults to scope='personal' (default arg), which is asymmetric with /api/calendar where default scope='all'. Consider aligning defaults or documenting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Budget add/edit modal", "issue": "On short viewports (390x844 mobile), the save-budget-btn can render just below the visible area when the modal + horizontal category chip row + input push content down; Playwright reports 'Element is outside of the viewport'. Real users can still scroll, but the modal sheet is not itself a ScrollView so the button may be clipped on smaller phones. Wrap the sheet content in a ScrollView or reduce vertical padding.", "testID": "save-budget-btn", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Delete budget", "issue": "Alert.alert('Hapus', ...) confirmation dialog does not fire in RN-web preview (same issue reported in iteration 3 for schedules). Tapping delete-budget-<id> on web is a no-op because the destructive Alert callback never runs. Backend DELETE /api/budgets/{id} works (covered by pytest). Consider Platform.OS==='web' branch using window.confirm or a custom Modal.", "affected_testIDs": ["delete-budget-<id>"]}
+    ],
+    "design_issues": [
+      {"screen": "budget.tsx", "issues": ["Add-budget modal bottom sheet lacks a ScrollView wrapper - on small viewports the save button may sit at or below the fold. Recommend wrapping sheet body (from fieldLabel onwards) in a ScrollView with keyboardShouldPersistTaps='handled'."]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props (repeat from iter 3)", "issue": "Deprecation warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Present across the app (e.g. /app/frontend/app/transfer-schedule.tsx:649-654). Not new to budget/calendar."},
+      {"component": "Image style.resizeMode (repeat from iter 3)", "issue": "Deprecation: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' Reference: /app/frontend/app/(tabs)/more.tsx:191 (LOGO on brandCard)."},
+      {"component": "props.pointerEvents (repeat from iter 3)", "issue": "Deprecation: 'props.pointerEvents is deprecated. Use style.pointerEvents' - likely from react-native-draglist internals."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_budget_calendar.py",
+    "/app/test_reports/pytest/pytest_budget_calendar.xml"
+  ],
+  "action_items": [
+    "Fix web delete UX for budgets: replace Alert.alert-based confirmation in /app/frontend/app/budget.tsx (~line 215) with a Platform-aware confirm, e.g. if (Platform.OS==='web') { if (window.confirm('Hapus anggaran ...')) del.mutate(b.id); } else { Alert.alert(...) }. Same pattern also needed in transfer-schedule.tsx (already flagged in iteration_3).",
+    "Wrap the Add/Edit Anggaran modal sheet body in a ScrollView so the save-budget-btn is always reachable on small viewports (e.g. iPhone SE 375x667). Currently only the horizontal category chip row is scrollable; the vertical content is not.",
+    "(Optional) Align /api/budget/overview default scope with /api/calendar (both default to 'all') or document the difference.",
+    "(Optional) Surface 'unbudgeted_spent' in /api/budget/overview so users can see expense categories without a corresponding budget.",
+    "(Deferred from iter 3) Migrate shadow* -> boxShadow and Image resizeMode style -> prop across the codebase."
+  ],
+  "critical_code_review_comments": [
+    "server.py: Budget CRUD + overview are correctly implemented. MongoDB _id excluded via projections + create/update helpers - verified no _id leaks. remaining = income - total_budget matches API contract.",
+    "server.py:854-901 budget_overview iterates budgets and computes spent from expense txs where date string startswith 'YYYY-MM'; correct as long as date is stored as ISO. Consider using dateutil parsing for robustness against non-ISO stored dates.",
+    "server.py:905-945 /api/calendar builds per-day buckets keyed by 'YYYY-MM-DD'; correctly filters by scope (default 'all') and month prefix. Returns totals + days map. Clean.",
+    "src/api.ts: New endpoints (listBudgets/createBudget/updateBudget/deleteBudget/budgetOverview/calendar) all correctly typed and use process.env.EXPO_PUBLIC_BACKEND_URL.",
+    "budget.tsx: Uses TanStack Query with invalidateQueries after mutations; local state cleanly separated; over-budget warning + progress bars are well-implemented.",
+    "calendar.tsx: Uses useMemo for byDate + cells; correctly builds leading blanks based on getDay() (0=Sun). Weekend styling on cols 0 & 6 is a nice touch. Today highlighted via todayKey comparison. Day-detail Modal is a bottom sheet with correct dismissal.",
+    "All required testIDs present: menu-calendar, menu-budget, calendar-back-btn, calendar-prev-month, calendar-next-month, calendar-month-label, calendar-scope-all|personal|business, calendar-day-<n>, calendar-total-income, calendar-total-expense, calendar-tx-<id>, budget-back-btn, add-budget-btn, budget-scope-personal|business, budget-income, budget-total, budget-remaining, budget-card-<id>, delete-budget-<id>, budget-cat-<key>, budget-amount-input, save-budget-btn.",
+    "budget.tsx edit modal sheet is not wrapped in a ScrollView; on small phones the save button may be clipped."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_budget_calendar.py (new, 11 tests)",
+    "/app/test_reports/pytest/pytest_budget_calendar.xml (new)",
+    "/app/test_reports/iteration_4.json (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "~90% - calendar all flows pass; budget add/edit/summary/scope/progress all pass; delete confirmation on RN-web does not open dialog; save button in modal may sit at viewport edge on small phones"},
+  "seed_data_creation": "Test-only budgets prefixed with TEST_ notes are auto-cleaned by TestZCleanup. A few TEST_ transactions may remain from parallel/xdist runs (only when tests are aborted mid-run); safe to ignore. No production data touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints for budgets + calendar are fully covered by /app/backend/tests/test_budget_calendar.py - 11 tests. Run with: pytest backend/tests/test_budget_calendar.py -v -o addopts='' (the -o addopts='' disables xdist; xdist causes class-state to be split across workers because created_ids is a class variable). Frontend testIDs for both features are all wired correctly and were exercised on mobile viewport (390x844) via /budget and /calendar deep links. Known RN-web limitation: Alert.alert-based delete confirmations do not surface as dialogs on web preview. Not a real bug but blocks Playwright coverage of delete flow on web - same as iteration_3 transfer-schedule finding.",
+  "rca_of_issue": "No functional bug in new features. Two low-severity UX findings: (1) Budget add/edit modal is not wrapped in a ScrollView so save button may be near/beyond the fold on small phones; wrap the sheet body in <ScrollView> to fix. (2) Alert.alert delete confirmation is a no-op on react-native-web (Alert polyfill without UI); use Platform.OS==='web' ? window.confirm : Alert.alert for parity."
+}

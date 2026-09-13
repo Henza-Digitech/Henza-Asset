@@ -804,6 +804,147 @@ async def import_all(bundle: ImportBundle):
     return {"ok": True, "mode": bundle.mode, "results": results}
 
 
+# ============ BUDGETS ============
+class BudgetIn(BaseModel):
+    category: str
+    amount: float  # planned monthly allocation
+    scope: str = "personal"  # "personal" | "business"
+    notes: str = ""
+
+
+class Budget(BudgetIn):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+
+
+@api_router.post("/budgets", response_model=Budget)
+async def create_budget(payload: BudgetIn):
+    obj = Budget(**payload.dict())
+    await db.budgets.insert_one(obj.dict())
+    return obj
+
+
+@api_router.get("/budgets", response_model=List[Budget])
+async def list_budgets(scope: Optional[str] = None):
+    query = {}
+    if scope and scope != "all":
+        query["scope"] = scope
+    docs = await db.budgets.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api_router.put("/budgets/{bid}", response_model=Budget)
+async def update_budget(bid: str, payload: BudgetIn):
+    existing = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    await db.budgets.update_one({"id": bid}, {"$set": payload.dict()})
+    existing.update(payload.dict())
+    return existing
+
+
+@api_router.delete("/budgets/{bid}")
+async def delete_budget(bid: str):
+    res = await db.budgets.delete_one({"id": bid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api_router.get("/budget/overview")
+async def budget_overview(
+    scope: str = "personal",
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+):
+    """Budget plan vs actual spending for a month, plus remaining balance."""
+    now = datetime.now(timezone.utc)
+    y = year or now.year
+    m = month or now.month
+    prefix = f"{y}-{m:02d}"
+
+    query = {}
+    if scope and scope != "all":
+        query["scope"] = scope
+    budgets = await db.budgets.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    txs = await db.transactions.find(query, {"_id": 0}).to_list(20000)
+
+    spent_by_cat: dict = {}
+    income = 0.0
+    for t in txs:
+        raw = t.get("date") or t.get("created_at") or ""
+        if not raw.startswith(prefix):
+            continue
+        if t["type"] == "expense":
+            spent_by_cat[t["category"]] = spent_by_cat.get(t["category"], 0.0) + t["amount"]
+        else:
+            income += t["amount"]
+
+    out = []
+    total_budget = 0.0
+    total_spent = 0.0
+    for b in budgets:
+        spent = spent_by_cat.get(b["category"], 0.0)
+        total_budget += b["amount"]
+        total_spent += spent
+        out.append({**b, "spent": spent, "remaining": b["amount"] - spent})
+
+    return {
+        "scope": scope,
+        "year": y,
+        "month": m,
+        "budgets": out,
+        "total_budget": total_budget,
+        "total_spent": total_spent,
+        "income": income,
+        "remaining": income - total_budget,
+    }
+
+
+# ============ CALENDAR (daily cash flow) ============
+@api_router.get("/calendar")
+async def calendar(
+    scope: str = "all",
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+):
+    """Per-day income & expense totals for a given month."""
+    now = datetime.now(timezone.utc)
+    y = year or now.year
+    m = month or now.month
+    prefix = f"{y}-{m:02d}"
+
+    query = {}
+    if scope and scope != "all":
+        query["scope"] = scope
+    txs = await db.transactions.find(query, {"_id": 0}).to_list(20000)
+
+    days: dict = {}
+    total_income = 0.0
+    total_expense = 0.0
+    for t in txs:
+        raw = t.get("date") or t.get("created_at") or ""
+        if not raw.startswith(prefix):
+            continue
+        key = raw[:10]  # YYYY-MM-DD
+        d = days.setdefault(key, {"income": 0.0, "expense": 0.0})
+        if t["type"] == "income":
+            d["income"] += t["amount"]
+            total_income += t["amount"]
+        else:
+            d["expense"] += t["amount"]
+            total_expense += t["amount"]
+
+    return {
+        "scope": scope,
+        "year": y,
+        "month": m,
+        "days": days,
+        "total_income": total_income,
+        "total_expense": total_expense,
+    }
+
+
 # ============ ROOT ============
 @api_router.get("/")
 async def root():

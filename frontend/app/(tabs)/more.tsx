@@ -53,6 +53,24 @@ export default function MoreScreen() {
           <Text style={styles.brandTag}>Solusindo · Financial App</Text>
         </View>
 
+        {/* Kalender Keuangan */}
+        <Section
+          title="Kalender Keuangan"
+          subtitle="Lihat pemasukan & pengeluaran per tanggal"
+          icon="calendar"
+          onPress={() => router.push("/calendar")}
+          testID="menu-calendar"
+        />
+
+        {/* Anggaran / Budget */}
+        <Section
+          title="Anggaran"
+          subtitle="Rencanakan budget & lihat sisa saldo"
+          icon="pie-chart"
+          onPress={() => router.push("/budget")}
+          testID="menu-budget"
+        />
+
         {/* Aset Kas Lain */}
         <Section
           title="Aset Kas Lain"
