@@ -1,22 +1,30 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "HENZA FINTECH",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.mobileimportbuild.gj296t"
+      "bundleIdentifier": "com.emergent.henzarupiahmanager.le9gkk",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ambil foto bukti pembayaran untuk transaksi",
+        "NSPhotoLibraryUsageDescription": "Pilih foto bukti pembayaran dari galeri"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#1a3a5c"
       },
-      "package": "com.emergent.mobileimportbuild.gj296t"
+      "package": "com.emergent.henzarupiahmanager.le9gkk",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,14 +39,24 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#1a3a5c"
         }
       ],
       "expo-font",
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      "@react-native-vector-icons/feather",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pilih foto bukti pembayaran dari galeri",
+          "cameraPermission": "Ambil foto bukti pembayaran untuk transaksi"
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
