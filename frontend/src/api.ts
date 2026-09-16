@@ -100,6 +100,22 @@ export const api = {
     return req(`/calendar?${p.toString()}`);
   },
 
+  // inventory (rekap stok)
+  listInventory: (q?: string) =>
+    req(`/inventory${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  inventoryStats: () => req(`/inventory/stats`),
+  createInventory: (body: any) =>
+    req("/inventory", { method: "POST", body: JSON.stringify(body) }),
+  updateInventory: (id: string, body: any) =>
+    req(`/inventory/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteInventory: (id: string) =>
+    req(`/inventory/${id}`, { method: "DELETE" }),
+
+  // market indicators
+  marketIndicators: () => req(`/market/indicators`),
+  updateMarketConfig: (body: any) =>
+    req(`/market/config`, { method: "PUT", body: JSON.stringify(body) }),
+
   // folders + files
   listFolders: (q?: string) =>
     req(`/folders${q ? `?q=${encodeURIComponent(q)}` : ""}`),

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import Feather from "@react-native-vector-icons/feather";
@@ -6,8 +6,6 @@ import { useRouter } from "expo-router";
 
 import { api, formatIDR } from "@/src/api";
 import { colors } from "@/src/theme";
-
-const LOGO = require("../../assets/images/icon.png");
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
@@ -44,14 +42,14 @@ export default function MoreScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: 32 }}
       >
-        {/* Brand header */}
-        <View style={styles.brandCard}>
-          <View style={styles.logoBadge}>
-            <Image source={LOGO} style={styles.logo} />
-          </View>
-          <Text style={styles.brandName}>HENZA FINTECH</Text>
-          <Text style={styles.brandTag}>Solusindo · Financial App</Text>
-        </View>
+        {/* Rekap Stok / Inventory */}
+        <Section
+          title="Rekap Stok"
+          subtitle="Kelola stok masuk/keluar & total otomatis"
+          icon="package"
+          onPress={() => router.push("/inventory")}
+          testID="menu-inventory"
+        />
 
         {/* Kalender Keuangan */}
         <Section

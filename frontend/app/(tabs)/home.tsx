@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Pressable,
   ActivityIndicator,
   Image,
+  Modal,
+  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -53,6 +55,14 @@ export default function HomeScreen() {
     onSuccess: (data) => qc.setQueryData(["ai-tips"], data),
   });
 
+  const market = useQuery({
+    queryKey: ["market"],
+    queryFn: () => api.marketIndicators(),
+    staleTime: 1000 * 60 * 5,
+    refetchInterval: 1000 * 60 * 5,
+  });
+  const [selectedInd, setSelectedInd] = useState<any | null>(null);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
@@ -84,11 +94,11 @@ export default function HomeScreen() {
           <View style={styles.headerRow}>
             <View style={styles.brandRow}>
               <View style={styles.logoBadge}>
-                <Image source={LOGO} style={styles.logo} />
+                <Image source={LOGO} style={styles.logo} resizeMode="contain" />
               </View>
               <View>
                 <Text style={styles.brandTitle}>HENZA FINTECH</Text>
-                <Text style={styles.brandSub}>Solusindo · Manajemen Keuangan</Text>
+                <Text style={styles.brandSub}>Financial Management</Text>
               </View>
             </View>
           </View>
@@ -136,6 +146,13 @@ export default function HomeScreen() {
           </Text>
         </LinearGradient>
 
+        {/* Market indicators */}
+        <MarketStrip
+          data={market.data?.indicators || []}
+          loading={market.isLoading}
+          onSelect={setSelectedInd}
+        />
+
         {/* Quick actions */}
         <View style={styles.quickRow}>
           <QuickAction
@@ -176,73 +193,64 @@ export default function HomeScreen() {
 
         {/* Total Rekening Pribadi & Perusahaan */}
         <View style={styles.accountsRow}>
-          <View style={[styles.accountCard, { borderColor: colors.brand }]} testID="account-personal-card">
-            <View style={styles.accountHead}>
-              <View style={[styles.accountIcon, { backgroundColor: `${colors.brand}18` }]}>
-                <Feather name="user" size={16} color={colors.brand} />
-              </View>
-              <Text style={styles.accountLabel}>Rekening Pribadi</Text>
-            </View>
-            <Text style={[styles.accountValue, { color: colors.brand }]} testID="account-personal-value">
-              {s ? formatIDR(s.by_scope?.personal?.net || 0) : "..."}
-            </Text>
-            <View style={styles.accountMetaRow}>
-              <Text style={styles.accountMetaIn}>
-                +{s ? shortIDR(s.by_scope?.personal?.income || 0) : "-"}
-              </Text>
-              <Text style={styles.accountMetaOut}>
-                -{s ? shortIDR(s.by_scope?.personal?.expense || 0) : "-"}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.accountCard, { borderColor: colors.brandPrimary }]} testID="account-business-card">
-            <View style={styles.accountHead}>
-              <View style={[styles.accountIcon, { backgroundColor: `${colors.brandPrimary}18` }]}>
-                <Feather name="briefcase" size={16} color={colors.brandPrimary} />
-              </View>
-              <Text style={styles.accountLabel}>Rekening Perusahaan</Text>
-            </View>
-            <Text style={[styles.accountValue, { color: colors.brandPrimary }]} testID="account-business-value">
-              {s ? formatIDR(s.by_scope?.business?.net || 0) : "..."}
-            </Text>
-            <View style={styles.accountMetaRow}>
-              <Text style={styles.accountMetaIn}>
-                +{s ? shortIDR(s.by_scope?.business?.income || 0) : "-"}
-              </Text>
-              <Text style={styles.accountMetaOut}>
-                -{s ? shortIDR(s.by_scope?.business?.expense || 0) : "-"}
-              </Text>
-            </View>
-          </View>
+          <AccountCard
+            label="Rekening Pribadi"
+            icon="user"
+            accent={colors.brand}
+            net={s?.by_scope?.personal?.net || 0}
+            income={s?.by_scope?.personal?.income || 0}
+            expense={s?.by_scope?.personal?.expense || 0}
+            ready={!!s}
+            testID="account-personal"
+          />
+          <AccountCard
+            label="Rekening Perusahaan"
+            icon="briefcase"
+            accent={colors.brandPrimary}
+            net={s?.by_scope?.business?.net || 0}
+            income={s?.by_scope?.business?.income || 0}
+            expense={s?.by_scope?.business?.expense || 0}
+            ready={!!s}
+            testID="account-business"
+          />
         </View>
 
         {/* AI Tip */}
-        <View style={styles.card} testID="ai-tips-card">
-          <View style={styles.cardHeader}>
-            <View style={styles.rowCenter}>
-              <Feather name="zap" size={16} color={colors.brandPrimary} />
-              <Text style={styles.cardTitle}>Tips Hemat AI</Text>
+        <View style={styles.aiCard} testID="ai-tips-card">
+          <LinearGradient
+            colors={["#1a3a5c", "#1f8a9e"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.aiHeader}
+          >
+            <View style={styles.aiHeaderLeft}>
+              <View style={styles.aiIconBadge}>
+                <Feather name="zap" size={15} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.aiTitle}>Tips Hemat AI</Text>
+                <Text style={styles.aiSub}>Saran cerdas dari pola keuanganmu</Text>
+              </View>
             </View>
             <Pressable
               onPress={() => refreshTips.mutate()}
               hitSlop={10}
               testID="refresh-tips"
+              style={styles.aiRefresh}
             >
-              <Feather
-                name="refresh-cw"
-                size={16}
-                color={colors.muted}
-              />
+              <Feather name="refresh-cw" size={15} color="#fff" />
             </Pressable>
+          </LinearGradient>
+          <View style={styles.aiBody}>
+            {tips.isLoading || refreshTips.isPending ? (
+              <View style={styles.rowCenter}>
+                <ActivityIndicator color={colors.brandPrimary} />
+                <Text style={styles.aiLoading}>Menganalisis keuanganmu...</Text>
+              </View>
+            ) : (
+              <Text style={styles.tipText}>{tips.data?.tips || "Belum ada tips."}</Text>
+            )}
           </View>
-          {tips.isLoading || refreshTips.isPending ? (
-            <ActivityIndicator color={colors.brandPrimary} />
-          ) : (
-            <Text style={styles.tipText}>
-              {tips.data?.tips || "Belum ada tips."}
-            </Text>
-          )}
         </View>
 
         {/* Rich Cash Flow chart */}
@@ -310,7 +318,280 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      <IndicatorSheet
+        indicator={selectedInd}
+        onClose={() => setSelectedInd(null)}
+      />
     </View>
+  );
+}
+
+const IND_ICONS: Record<string, string> = {
+  bi_rate: "percent",
+  inflation: "trending-up",
+  sbn10y: "file-text",
+  gold: "circle",
+  jci: "activity",
+};
+
+function fmtIndicator(ind: any): string {
+  if (ind.value == null) return "—";
+  if (ind.format === "percent") return `${ind.value}%`;
+  if (ind.format === "idr") return shortIDR(ind.value);
+  if (ind.format === "number")
+    return Number(ind.value).toLocaleString("id-ID", { maximumFractionDigits: 0 });
+  return String(ind.value);
+}
+
+function MarketStrip({
+  data,
+  loading,
+  onSelect,
+}: {
+  data: any[];
+  loading: boolean;
+  onSelect: (ind: any) => void;
+}) {
+  if (loading && data.length === 0) {
+    return (
+      <View style={styles.stripLoading}>
+        <ActivityIndicator color={colors.brandPrimary} />
+      </View>
+    );
+  }
+  if (!data.length) return null;
+  return (
+    <View style={{ marginTop: 18 }}>
+      <View style={styles.stripHeadRow}>
+        <Text style={styles.sectionLabel}>Indikator Pasar</Text>
+        <Text style={styles.stripHint}>ketuk untuk detail</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.stripRow}
+      >
+        {data.map((ind) => {
+          const chg = ind.change_pct;
+          const hasChg = typeof chg === "number";
+          const up = hasChg && chg >= 0;
+          return (
+            <Pressable
+              key={ind.key}
+              style={styles.indCard}
+              onPress={() => onSelect(ind)}
+              testID={`indicator-${ind.key}`}
+            >
+              <View style={styles.indTop}>
+                <View style={styles.indIcon}>
+                  <Feather
+                    name={(IND_ICONS[ind.key] || "bar-chart-2") as any}
+                    size={12}
+                    color={colors.brandPrimary}
+                  />
+                </View>
+                <Text style={styles.indLabel} numberOfLines={1}>
+                  {ind.label}
+                </Text>
+              </View>
+              <Text style={styles.indValue} numberOfLines={1}>
+                {fmtIndicator(ind)}
+              </Text>
+              {hasChg ? (
+                <View style={styles.indChgRow}>
+                  <Feather
+                    name={up ? "trending-up" : "trending-down"}
+                    size={11}
+                    color={up ? colors.success : colors.error}
+                  />
+                  <Text style={[styles.indChg, { color: up ? colors.success : colors.error }]}>
+                    {up ? "+" : ""}
+                    {chg}%
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.indAsof} numberOfLines={1}>
+                  {ind.as_of || ""}
+                </Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function AccountCard({
+  label,
+  icon,
+  accent,
+  net,
+  income,
+  expense,
+  ready,
+  testID,
+}: {
+  label: string;
+  icon: string;
+  accent: string;
+  net: number;
+  income: number;
+  expense: number;
+  ready: boolean;
+  testID: string;
+}) {
+  return (
+    <View style={styles.accountCard} testID={`${testID}-card`}>
+      <View style={[styles.accountAccent, { backgroundColor: accent }]} />
+      <View style={styles.accountHead}>
+        <View style={[styles.accountIcon, { backgroundColor: `${accent}18` }]}>
+          <Feather name={icon as any} size={15} color={accent} />
+        </View>
+        <Text style={styles.accountLabel}>{label}</Text>
+      </View>
+      <Text style={[styles.accountValue, { color: accent }]} testID={`${testID}-value`}>
+        {ready ? formatIDR(net) : "..."}
+      </Text>
+      <View style={styles.accountDivider} />
+      <View style={styles.accountMetaRow}>
+        <View style={styles.metaPill}>
+          <Feather name="arrow-down-left" size={11} color={colors.success} />
+          <Text style={styles.metaIn}>{ready ? shortIDR(income) : "-"}</Text>
+        </View>
+        <View style={styles.metaPill}>
+          <Feather name="arrow-up-right" size={11} color={colors.error} />
+          <Text style={styles.metaOut}>{ready ? shortIDR(expense) : "-"}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function IndicatorSheet({
+  indicator,
+  onClose,
+}: {
+  indicator: any | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
+  const [editMode, setEditMode] = useState(false);
+  const [val, setVal] = useState("");
+  const [asof, setAsof] = useState("");
+
+  useEffect(() => {
+    if (indicator) {
+      setEditMode(false);
+      setVal(indicator.value != null ? String(indicator.value) : "");
+      setAsof(indicator.as_of || "");
+    }
+  }, [indicator]);
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body: Record<string, any> = {};
+      body[indicator.key] = parseFloat(val.replace(",", ".")) || 0;
+      body[`${indicator.key}_asof`] = asof;
+      return api.updateMarketConfig(body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["market"] });
+      onClose();
+    },
+  });
+
+  const asofDisplay =
+    indicator?.as_of && String(indicator.as_of).includes("T")
+      ? new Date(indicator.as_of).toLocaleString("id-ID")
+      : indicator?.as_of || "-";
+
+  return (
+    <Modal visible={!!indicator} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <View style={[styles.indSheet, { paddingBottom: insets.bottom + 20 }]}>
+          {indicator && (
+            <>
+              <View style={styles.indSheetHead}>
+                <Text style={styles.indSheetTitle}>{indicator.label}</Text>
+                <Pressable onPress={onClose} hitSlop={10}>
+                  <Feather name="x" size={22} color={colors.onSurface} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.indSheetValue}>{fmtIndicator(indicator)}</Text>
+              {typeof indicator.change_pct === "number" && (
+                <Text
+                  style={[
+                    styles.indSheetChg,
+                    { color: indicator.change_pct >= 0 ? colors.success : colors.error },
+                  ]}
+                >
+                  {indicator.change_pct >= 0 ? "▲ +" : "▼ "}
+                  {indicator.change_pct}% hari ini
+                </Text>
+              )}
+
+              <Text style={styles.indSheetNote}>{indicator.note}</Text>
+
+              <View style={styles.indMetaRow}>
+                <Feather name="database" size={13} color={colors.muted} />
+                <Text style={styles.indMetaText}>{indicator.source}</Text>
+              </View>
+              <View style={styles.indMetaRow}>
+                <Feather name="clock" size={13} color={colors.muted} />
+                <Text style={styles.indMetaText}>Per {asofDisplay}</Text>
+              </View>
+
+              {indicator.editable && !editMode && (
+                <Pressable
+                  style={styles.editLink}
+                  onPress={() => setEditMode(true)}
+                  testID={`edit-indicator-${indicator.key}`}
+                >
+                  <Feather name="edit-2" size={14} color={colors.brandPrimary} />
+                  <Text style={styles.editLinkText}>Perbarui nilai</Text>
+                </Pressable>
+              )}
+
+              {indicator.editable && editMode && (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={styles.editLabel}>Nilai (%)</Text>
+                  <TextInput
+                    value={val}
+                    onChangeText={(v) => setVal(v.replace(/[^0-9.,]/g, ""))}
+                    keyboardType="numeric"
+                    style={styles.editInput}
+                    placeholderTextColor={colors.muted}
+                    testID="indicator-value-input"
+                  />
+                  <Text style={styles.editLabel}>Per (mis. Agu 2026)</Text>
+                  <TextInput
+                    value={asof}
+                    onChangeText={setAsof}
+                    style={styles.editInput}
+                    placeholderTextColor={colors.muted}
+                    testID="indicator-asof-input"
+                  />
+                  <Pressable
+                    style={styles.indSaveBtn}
+                    onPress={() => save.mutate()}
+                    testID="save-indicator-btn"
+                  >
+                    <Text style={styles.indSaveText}>
+                      {save.isPending ? "Menyimpan..." : "Simpan"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -337,14 +618,6 @@ function QuickAction({
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={styles.rowCenter}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
-    </View>
-  );
-}
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surfaceSecondary },
   hero: {
@@ -356,20 +629,16 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.95)",
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    padding: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    overflow: "hidden",
+    elevation: 3,
   },
-  logo: { width: "100%", height: "100%", resizeMode: "contain" },
+  logo: { width: 50, height: 50 },
   brandTitle: { color: "#fff", fontWeight: "800", fontSize: 16, letterSpacing: 0.8 },
   brandSub: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
   balanceLabel: { color: "rgba(255,255,255,0.7)", fontSize: 12, marginTop: 4 },
@@ -431,9 +700,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingTop: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    overflow: "hidden",
+    elevation: 2,
   },
+  accountAccent: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
+  accountDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginTop: 10,
+  },
+  metaPill: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaIn: { fontSize: 11, fontWeight: "700", color: colors.success },
+  metaOut: { fontSize: 11, fontWeight: "700", color: colors.error },
   accountHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
   accountIcon: {
     width: 30,
@@ -503,4 +786,138 @@ const styles = StyleSheet.create({
   txTitle: { fontSize: 13, fontWeight: "600", color: colors.onSurface },
   txMeta: { fontSize: 11, color: colors.muted, marginTop: 2 },
   txAmount: { fontSize: 13, fontWeight: "700" },
+
+  /* Market indicators strip */
+  stripLoading: { marginTop: 18, alignItems: "center", justifyContent: "center", height: 60 },
+  stripHeadRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  sectionLabel: { fontSize: 14, fontWeight: "700", color: colors.onSurface },
+  stripHint: { fontSize: 11, color: colors.muted, fontStyle: "italic" },
+  stripRow: { paddingHorizontal: 16, gap: 10 },
+  indCard: {
+    width: 132,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    flexShrink: 0,
+  },
+  indTop: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  indIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  indLabel: { flex: 1, fontSize: 11, fontWeight: "600", color: colors.muted },
+  indValue: { fontSize: 16, fontWeight: "800", color: colors.onSurface },
+  indChgRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 4 },
+  indChg: { fontSize: 11, fontWeight: "700" },
+  indAsof: { fontSize: 10, color: colors.muted, marginTop: 4 },
+
+  /* AI card */
+  aiCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  aiHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  aiHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  aiIconBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiTitle: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  aiSub: { color: "rgba(255,255,255,0.75)", fontSize: 10, marginTop: 1 },
+  aiRefresh: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiBody: { backgroundColor: colors.surface, padding: 16 },
+  aiLoading: { color: colors.muted, fontSize: 12, marginLeft: 10 },
+
+  /* Indicator detail sheet */
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
+  indSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  indSheetHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  indSheetTitle: { fontSize: 16, fontWeight: "700", color: colors.onSurface },
+  indSheetValue: { fontSize: 32, fontWeight: "800", color: colors.brand, marginTop: 4 },
+  indSheetChg: { fontSize: 13, fontWeight: "700", marginTop: 4 },
+  indSheetNote: {
+    fontSize: 13,
+    color: colors.onSurfaceSecondary,
+    lineHeight: 20,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  indMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  indMetaText: { fontSize: 12, color: colors.muted },
+  editLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 16,
+    alignSelf: "flex-start",
+  },
+  editLinkText: { fontSize: 13, fontWeight: "700", color: colors.brandPrimary },
+  editLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.onSurfaceSecondary,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  editInput: {
+    height: 46,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    color: colors.onSurface,
+    fontSize: 14,
+  },
+  indSaveBtn: {
+    height: 48,
+    backgroundColor: colors.brand,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 16,
+  },
+  indSaveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });

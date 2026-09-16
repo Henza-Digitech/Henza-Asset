@@ -32,9 +32,19 @@ Single-user (no auth). (Renamed from "HENZA DIGITECH" → "HENZA FINTECH" on 202
    - **Jadwal Transfer (Transfer Schedule)** [added 2026-09-13]: plan money transfers to someone. Fields: Nama, Jumlah, Tanggal, No. rekening/bank, Catatan. Drag rows up/down to reorder (react-native-draglist) + "Urutkan tanggal terdekat" button (not-done first, earliest date). Mark "Selesai" toggle keeps item as history. Badge on More menu + summary strip when a transfer is <=3 days away. Persisted via /api/schedules (order field) + /api/schedules/reorder. Included in backup export/import.
    - **Kalender Keuangan (Calendar)** [added 2026-09-13]: `/calendar`. Monthly grid showing per-day total income (green) & expense (red) using short IDR. Prev/next month nav, 3-way scope toggle (Semua/Pribadi/Perusahaan), today highlighted, month totals card (Pemasukan/Pengeluaran/Selisih). Tap a date → bottom sheet listing that day's transactions with per-day income/expense summary. Grid computed client-side from /api/transactions (scope-filtered).
    - **Anggaran (Budget)** [added 2026-09-13]: `/budget`. Budget planning per expense category. Scope toggle Pribadi/Perusahaan. Summary card: Pemasukan (month income), Total Anggaran, **Sisa Saldo = income − total budget** (red if over). Per-category cards: budgeted vs actual spent this month, progress bar (red if over), "Sisa/Lebih" + %. Add/edit via modal (category chips + amount, scrollable), delete with cross-platform confirm (window.confirm on web). Persisted via /api/budgets; overview via /api/budget/overview.
+   - **Rekap Stok (Inventory)** [added 2026-09-16]: `/inventory`. Stock recap dashboard. Key stat cards: Total Item, Total Kuantitas, Masih di Gudang (in-stock qty+items), Sudah Keluar (out qty+items) — all auto-totaled from /api/inventory/stats. Excel-style table: Nama, Qty+unit, Tanggal Masuk, Tanggal Keluar with in-stock/keluar status pill. Add/edit modal (name, quantity, unit, entry_date, optional exit_date with "Hari ini"/"Hapus" quick buttons, notes), delete with cross-platform confirm, search by name.
+
+## Home dashboard [redesigned 2026-09-16]
+- Logo shown fully intact in a clean white rounded badge (56x56, contain); brand subtitle is now "Financial Management" (removed "Solusindo").
+- **Indikator Pasar** strip (horizontal scroll) below the hero: BI Rate, Inflasi (YoY), SBN 10 Thn (editable, stored), Emas/gram + IHSG (live via Yahoo Finance, auto-refresh 5 min). Tap a card → detail sheet with big value, live change %, plain-language note, source, "Per <as-of>", and for editable indicators an inline "Perbarui nilai" edit form.
+- "Tips Hemat AI" card redesigned with gradient header + icon badge. "Rekening Pribadi/Perusahaan" cards redesigned with top accent bar, divider, and in/out pills.
+- The decorative logo/brand card was removed from the Lainnya (More) dashboard.
 
 ## Backend Endpoints (all prefixed /api)
-- CRUD: /transactions, /assets, /bills, /contacts, /schedules, /budgets [added 2026-09-13]
+- CRUD: /transactions, /assets, /bills, /contacts, /schedules, /budgets, /inventory [inventory added 2026-09-16]
+- GET /inventory/stats — total_items, total_qty, in_stock_items/qty, out_items/qty [2026-09-16]
+- GET /market/indicators — 5 indicators (bi_rate, inflation, sbn10y editable; gold, jci live via Yahoo ^JKSE/GC=F/IDR=X, cached in market_config) [2026-09-16]
+- PUT /market/config — update editable BI Rate / Inflation / SBN 10Y values + as-of labels [2026-09-16]
 - POST /schedules/reorder {ids:[...]} — persist manual drag order
 - GET /summary?scope=business
 - GET /bills/upcoming?days=7

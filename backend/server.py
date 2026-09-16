@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
+import asyncio
+import requests
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
@@ -943,6 +945,209 @@ async def calendar(
         "total_income": total_income,
         "total_expense": total_expense,
     }
+
+
+# ============ INVENTORY (Rekap Stok) ============
+class InventoryItemIn(BaseModel):
+    name: str
+    quantity: float = 0
+    unit: str = "pcs"
+    entry_date: Optional[str] = None  # tanggal masuk YYYY-MM-DD
+    exit_date: Optional[str] = None   # tanggal keluar (opsional)
+    notes: str = ""
+
+
+class InventoryItem(InventoryItemIn):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+
+
+@api_router.post("/inventory", response_model=InventoryItem)
+async def create_inventory(payload: InventoryItemIn):
+    obj = InventoryItem(**payload.dict())
+    if not obj.entry_date:
+        obj.entry_date = now_iso()[:10]
+    await db.inventory.insert_one(obj.dict())
+    return obj
+
+
+@api_router.get("/inventory", response_model=List[InventoryItem])
+async def list_inventory(q: Optional[str] = None):
+    query = {}
+    if q:
+        query["name"] = {"$regex": q, "$options": "i"}
+    docs = await db.inventory.find(query, {"_id": 0}).sort("entry_date", -1).to_list(2000)
+    return docs
+
+
+@api_router.get("/inventory/stats")
+async def inventory_stats():
+    items = await db.inventory.find({}, {"_id": 0}).to_list(5000)
+    total_items = len(items)
+    total_qty = sum(i.get("quantity", 0) for i in items)
+    in_stock_items = [i for i in items if not i.get("exit_date")]
+    out_items = [i for i in items if i.get("exit_date")]
+    in_stock_qty = sum(i.get("quantity", 0) for i in in_stock_items)
+    out_qty = sum(i.get("quantity", 0) for i in out_items)
+    return {
+        "total_items": total_items,
+        "total_qty": total_qty,
+        "in_stock_items": len(in_stock_items),
+        "in_stock_qty": in_stock_qty,
+        "out_items": len(out_items),
+        "out_qty": out_qty,
+    }
+
+
+@api_router.put("/inventory/{iid}", response_model=InventoryItem)
+async def update_inventory(iid: str, payload: InventoryItemIn):
+    existing = await db.inventory.find_one({"id": iid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    updates = payload.dict()
+    await db.inventory.update_one({"id": iid}, {"$set": updates})
+    existing.update(updates)
+    return existing
+
+
+@api_router.delete("/inventory/{iid}")
+async def delete_inventory(iid: str):
+    res = await db.inventory.delete_one({"id": iid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+# ============ MARKET INDICATORS ============
+DEFAULT_MARKET_MANUAL = {
+    "bi_rate": 5.00,
+    "bi_rate_asof": "Agu 2026",
+    "inflation": 3.19,
+    "inflation_asof": "Agu 2026",
+    "sbn10y": 7.34,
+    "sbn10y_asof": "31 Jul 2026",
+}
+
+
+def _yahoo_meta(symbol: str) -> dict:
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        "?interval=1d&range=5d"
+    )
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+    return r.json()["chart"]["result"][0]["meta"]
+
+
+def _fetch_live_market() -> dict:
+    out: dict = {}
+    try:
+        j = _yahoo_meta("%5EJKSE")
+        out["jci"] = {
+            "value": round(float(j["regularMarketPrice"]), 2),
+            "change_pct": round(float(j.get("regularMarketChangePercent", 0.0)), 2),
+        }
+    except Exception:
+        pass
+    try:
+        g = _yahoo_meta("GC=F")
+        fx = _yahoo_meta("IDR=X")
+        per_gram = float(g["regularMarketPrice"]) / 31.1035 * float(fx["regularMarketPrice"])
+        out["gold"] = {
+            "value": round(per_gram),
+            "change_pct": round(float(g.get("regularMarketChangePercent", 0.0)), 2),
+        }
+    except Exception:
+        pass
+    return out
+
+
+@api_router.get("/market/indicators")
+async def market_indicators():
+    cfg = await db.market_config.find_one({"id": "config"}, {"_id": 0})
+    if not cfg:
+        cfg = {"id": "config", **DEFAULT_MARKET_MANUAL}
+        await db.market_config.insert_one(dict(cfg))
+
+    live = await asyncio.to_thread(_fetch_live_market)
+
+    updates: dict = {}
+    if "jci" in live:
+        updates["jci_value"] = live["jci"]["value"]
+        updates["jci_change"] = live["jci"]["change_pct"]
+    if "gold" in live:
+        updates["gold_value"] = live["gold"]["value"]
+        updates["gold_change"] = live["gold"]["change_pct"]
+    if updates:
+        updates["live_asof"] = now_iso()
+        await db.market_config.update_one({"id": "config"}, {"$set": updates})
+        cfg.update(updates)
+
+    jci_val = live.get("jci", {}).get("value", cfg.get("jci_value"))
+    jci_chg = live.get("jci", {}).get("change_pct", cfg.get("jci_change"))
+    gold_val = live.get("gold", {}).get("value", cfg.get("gold_value"))
+    gold_chg = live.get("gold", {}).get("change_pct", cfg.get("gold_change"))
+    live_asof = cfg.get("live_asof")
+
+    return {
+        "live": bool(live),
+        "indicators": [
+            {
+                "key": "bi_rate", "label": "BI Rate", "value": cfg.get("bi_rate"),
+                "unit": "%", "format": "percent", "as_of": cfg.get("bi_rate_asof"),
+                "source": "Rapat Dewan Gubernur BI",
+                "note": "Acuan estimasi cicilan utang & imbal hasil pasar uang.",
+                "editable": True,
+            },
+            {
+                "key": "inflation", "label": "Inflasi (YoY)", "value": cfg.get("inflation"),
+                "unit": "%", "format": "percent", "as_of": cfg.get("inflation_asof"),
+                "source": "BPS",
+                "note": "Ukur pertumbuhan daya beli aset riil Anda.",
+                "editable": True,
+            },
+            {
+                "key": "sbn10y", "label": "SBN 10 Thn", "value": cfg.get("sbn10y"),
+                "unit": "%", "format": "percent", "as_of": cfg.get("sbn10y_asof"),
+                "source": "Imbal hasil SBN tenor 10 tahun",
+                "note": "Acuan imbal hasil obligasi & sukuk negara.",
+                "editable": True,
+            },
+            {
+                "key": "gold", "label": "Emas /gram", "value": gold_val,
+                "unit": "Rp", "format": "idr", "change_pct": gold_chg,
+                "as_of": live_asof, "source": "Harga spot (Yahoo Finance)",
+                "note": "Referensi beli/jual dana darurat & lindung nilai.",
+                "editable": False,
+            },
+            {
+                "key": "jci", "label": "IHSG", "value": jci_val,
+                "unit": "", "format": "number", "change_pct": jci_chg,
+                "as_of": live_asof, "source": "IDX Composite (^JKSE)",
+                "note": "Barometer sentimen portofolio saham.",
+                "editable": False,
+            },
+        ],
+    }
+
+
+class MarketConfigIn(BaseModel):
+    bi_rate: Optional[float] = None
+    bi_rate_asof: Optional[str] = None
+    inflation: Optional[float] = None
+    inflation_asof: Optional[str] = None
+    sbn10y: Optional[float] = None
+    sbn10y_asof: Optional[str] = None
+
+
+@api_router.put("/market/config")
+async def update_market_config(payload: MarketConfigIn):
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if updates:
+        await db.market_config.update_one(
+            {"id": "config"}, {"$set": updates}, upsert=True
+        )
+    doc = await db.market_config.find_one({"id": "config"}, {"_id": 0})
+    return doc or {}
 
 
 # ============ ROOT ============
