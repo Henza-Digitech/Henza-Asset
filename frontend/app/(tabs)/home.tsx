@@ -10,6 +10,7 @@ import {
   Image,
   Modal,
   TextInput,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +24,8 @@ import { colors } from "@/src/theme";
 import { categoryMeta } from "@/src/categories";
 import { CategoryIcon } from "@/src/components/CategoryIcon";
 import { CashFlowChart } from "@/src/components/CashFlowChart";
+import { LineChart } from "react-native-gifted-charts";
+import { useResponsive } from "@/src/responsive";
 
 const LOGO = require("../../assets/images/icon.png");
 
@@ -76,6 +79,132 @@ export default function HomeScreen() {
   const s = summary.data;
   const recent: any[] = txs.data || [];
   const bills: any[] = upcoming.data || [];
+  const { isWide } = useResponsive();
+
+  const accountsBlock = (
+    <View style={styles.accountsRow}>
+      <AccountCard
+        label="Rekening Pribadi"
+        icon="user"
+        accent={colors.brand}
+        net={s?.by_scope?.personal?.net || 0}
+        income={s?.by_scope?.personal?.income || 0}
+        expense={s?.by_scope?.personal?.expense || 0}
+        ready={!!s}
+        testID="account-personal"
+      />
+      <AccountCard
+        label="Rekening Perusahaan"
+        icon="briefcase"
+        accent={colors.brandPrimary}
+        net={s?.by_scope?.business?.net || 0}
+        income={s?.by_scope?.business?.income || 0}
+        expense={s?.by_scope?.business?.expense || 0}
+        ready={!!s}
+        testID="account-business"
+      />
+    </View>
+  );
+
+  const aiBlock = (
+    <View style={styles.aiCard} testID="ai-tips-card">
+      <LinearGradient
+        colors={["#1a3a5c", "#1f8a9e"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.aiHeader}
+      >
+        <View style={styles.aiHeaderLeft}>
+          <View style={styles.aiIconBadge}>
+            <Feather name="zap" size={15} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.aiTitle}>Tips Hemat AI</Text>
+            <Text style={styles.aiSub}>Saran cerdas dari pola keuanganmu</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => refreshTips.mutate()}
+          hitSlop={10}
+          testID="refresh-tips"
+          style={styles.aiRefresh}
+        >
+          <Feather name="refresh-cw" size={15} color="#fff" />
+        </Pressable>
+      </LinearGradient>
+      <View style={styles.aiBody}>
+        {tips.isLoading || refreshTips.isPending ? (
+          <View style={styles.rowCenter}>
+            <ActivityIndicator color={colors.brandPrimary} />
+            <Text style={styles.aiLoading}>Menganalisis keuanganmu...</Text>
+          </View>
+        ) : (
+          <Text style={styles.tipText}>{tips.data?.tips || "Belum ada tips."}</Text>
+        )}
+      </View>
+    </View>
+  );
+
+  const billsBlock =
+    bills.length > 0 ? (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.rowCenter}>
+            <Feather name="bell" size={16} color={colors.warning} />
+            <Text style={styles.cardTitle}>Tagihan Segera Jatuh Tempo</Text>
+          </View>
+        </View>
+        {bills.slice(0, 3).map((b) => (
+          <View key={b.id} style={styles.billRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.billName}>{b.name}</Text>
+              <Text style={styles.billMeta}>
+                Tanggal {b.due_day} • {b.days_left === 0 ? "Hari ini" : `${b.days_left} hari lagi`}
+              </Text>
+            </View>
+            <Text style={styles.billAmount}>{formatIDR(b.amount)}</Text>
+          </View>
+        ))}
+      </View>
+    ) : null;
+
+  const recentBlock = (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardTitle}>Transaksi Terbaru</Text>
+        <Pressable onPress={() => router.push("/(tabs)/transactions")}>
+          <Text style={styles.link}>Lihat semua</Text>
+        </Pressable>
+      </View>
+      {recent.length === 0 ? (
+        <Text style={styles.empty}>Belum ada transaksi.</Text>
+      ) : (
+        recent.map((t) => {
+          const meta = categoryMeta(t.category);
+          return (
+            <View key={t.id} style={styles.txRow}>
+              <CategoryIcon name={meta.icon} color={meta.color} size={16} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.txTitle}>{t.description || meta.label}</Text>
+                <Text style={styles.txMeta}>
+                  {meta.label} • {t.scope === "business" ? "Bisnis" : "Pribadi"}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.txAmount,
+                  { color: t.type === "income" ? colors.success : colors.error },
+                ]}
+              >
+                {t.type === "income" ? "+" : "-"}
+                {shortIDR(t.amount)}
+              </Text>
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -191,132 +320,30 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Total Rekening Pribadi & Perusahaan */}
-        <View style={styles.accountsRow}>
-          <AccountCard
-            label="Rekening Pribadi"
-            icon="user"
-            accent={colors.brand}
-            net={s?.by_scope?.personal?.net || 0}
-            income={s?.by_scope?.personal?.income || 0}
-            expense={s?.by_scope?.personal?.expense || 0}
-            ready={!!s}
-            testID="account-personal"
-          />
-          <AccountCard
-            label="Rekening Perusahaan"
-            icon="briefcase"
-            accent={colors.brandPrimary}
-            net={s?.by_scope?.business?.net || 0}
-            income={s?.by_scope?.business?.income || 0}
-            expense={s?.by_scope?.business?.expense || 0}
-            ready={!!s}
-            testID="account-business"
-          />
-        </View>
-
-        {/* AI Tip */}
-        <View style={styles.aiCard} testID="ai-tips-card">
-          <LinearGradient
-            colors={["#1a3a5c", "#1f8a9e"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.aiHeader}
-          >
-            <View style={styles.aiHeaderLeft}>
-              <View style={styles.aiIconBadge}>
-                <Feather name="zap" size={15} color="#fff" />
+        {/* Dashboard body — 2-column on tablet landscape / desktop */}
+        {isWide ? (
+          <View style={styles.twoColWrap}>
+            <View style={styles.twoCol}>
+              <View style={styles.col}>
+                {accountsBlock}
+                {aiBlock}
+                {billsBlock}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.aiTitle}>Tips Hemat AI</Text>
-                <Text style={styles.aiSub}>Saran cerdas dari pola keuanganmu</Text>
+              <View style={styles.col}>
+                <CashFlowChart />
+                {recentBlock}
               </View>
             </View>
-            <Pressable
-              onPress={() => refreshTips.mutate()}
-              hitSlop={10}
-              testID="refresh-tips"
-              style={styles.aiRefresh}
-            >
-              <Feather name="refresh-cw" size={15} color="#fff" />
-            </Pressable>
-          </LinearGradient>
-          <View style={styles.aiBody}>
-            {tips.isLoading || refreshTips.isPending ? (
-              <View style={styles.rowCenter}>
-                <ActivityIndicator color={colors.brandPrimary} />
-                <Text style={styles.aiLoading}>Menganalisis keuanganmu...</Text>
-              </View>
-            ) : (
-              <Text style={styles.tipText}>{tips.data?.tips || "Belum ada tips."}</Text>
-            )}
           </View>
-        </View>
-
-        {/* Rich Cash Flow chart */}
-        <CashFlowChart />
-
-        {/* Upcoming bills */}
-        {bills.length > 0 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.rowCenter}>
-                <Feather name="bell" size={16} color={colors.warning} />
-                <Text style={styles.cardTitle}>Tagihan Segera Jatuh Tempo</Text>
-              </View>
-            </View>
-            {bills.slice(0, 3).map((b) => (
-              <View key={b.id} style={styles.billRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.billName}>{b.name}</Text>
-                  <Text style={styles.billMeta}>
-                    Tanggal {b.due_day} • {b.days_left === 0 ? "Hari ini" : `${b.days_left} hari lagi`}
-                  </Text>
-                </View>
-                <Text style={styles.billAmount}>{formatIDR(b.amount)}</Text>
-              </View>
-            ))}
-          </View>
+        ) : (
+          <>
+            {accountsBlock}
+            {aiBlock}
+            <CashFlowChart />
+            {billsBlock}
+            {recentBlock}
+          </>
         )}
-
-        {/* Recent transactions */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Transaksi Terbaru</Text>
-            <Pressable onPress={() => router.push("/(tabs)/transactions")}>
-              <Text style={styles.link}>Lihat semua</Text>
-            </Pressable>
-          </View>
-          {recent.length === 0 ? (
-            <Text style={styles.empty}>Belum ada transaksi.</Text>
-          ) : (
-            recent.map((t) => {
-              const meta = categoryMeta(t.category);
-              return (
-                <View key={t.id} style={styles.txRow}>
-                  <CategoryIcon name={meta.icon} color={meta.color} size={16} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.txTitle}>
-                      {t.description || meta.label}
-                    </Text>
-                    <Text style={styles.txMeta}>
-                      {meta.label} • {t.scope === "business" ? "Bisnis" : "Pribadi"}
-                    </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.txAmount,
-                      { color: t.type === "income" ? colors.success : colors.error },
-                    ]}
-                  >
-                    {t.type === "income" ? "+" : "-"}
-                    {shortIDR(t.amount)}
-                  </Text>
-                </View>
-              );
-            })
-          )}
-        </View>
       </ScrollView>
 
       <IndicatorSheet
@@ -478,17 +505,47 @@ function IndicatorSheet({
 }) {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [editMode, setEditMode] = useState(false);
   const [val, setVal] = useState("");
   const [asof, setAsof] = useState("");
+  const [loanAmt, setLoanAmt] = useState("");
+  const [loanTenor, setLoanTenor] = useState("12");
+  const [loanRate, setLoanRate] = useState("");
 
   useEffect(() => {
     if (indicator) {
       setEditMode(false);
       setVal(indicator.value != null ? String(indicator.value) : "");
       setAsof(indicator.as_of || "");
+      setLoanAmt("");
+      setLoanTenor("12");
+      setLoanRate(
+        indicator.key === "bi_rate" && indicator.value != null ? String(indicator.value) : ""
+      );
     }
   }, [indicator]);
+
+  const isChartable = !!indicator && (indicator.key === "gold" || indicator.key === "jci");
+  const history = useQuery({
+    queryKey: ["market-history", indicator?.key],
+    queryFn: () => api.marketHistory(indicator.key),
+    enabled: isChartable,
+    staleTime: 1000 * 60 * 5,
+  });
+  const points: any[] = history.data?.points || [];
+  const chartData = points.map((p) => ({ value: p.value, label: p.label }));
+  const chartWidth = Math.min(width - 88, 460);
+
+  const isLoan = !!indicator && indicator.key === "bi_rate";
+  const loanP = parseFloat(loanAmt.replace(/\./g, "")) || 0;
+  const loanN = parseInt(loanTenor) || 0;
+  const loanAnnual = parseFloat(loanRate.replace(",", ".")) || 0;
+  const rMonthly = loanAnnual / 100 / 12;
+  let monthly = 0;
+  if (loanP > 0 && loanN > 0)
+    monthly = rMonthly > 0 ? (loanP * rMonthly) / (1 - Math.pow(1 + rMonthly, -loanN)) : loanP / loanN;
+  const totalPay = monthly * loanN;
 
   const save = useMutation({
     mutationFn: () => {
@@ -514,7 +571,11 @@ function IndicatorSheet({
         <Pressable style={{ flex: 1 }} onPress={onClose} />
         <View style={[styles.indSheet, { paddingBottom: insets.bottom + 20 }]}>
           {indicator && (
-            <>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
               <View style={styles.indSheetHead}>
                 <Text style={styles.indSheetTitle}>{indicator.label}</Text>
                 <Pressable onPress={onClose} hitSlop={10}>
@@ -545,6 +606,49 @@ function IndicatorSheet({
                 <Feather name="clock" size={13} color={colors.muted} />
                 <Text style={styles.indMetaText}>Per {asofDisplay}</Text>
               </View>
+
+              {isChartable && (
+                <View style={styles.chartWrap}>
+                  {history.isLoading ? (
+                    <ActivityIndicator color={colors.brandPrimary} style={{ paddingVertical: 30 }} />
+                  ) : chartData.length > 1 ? (
+                    <>
+                      <Text style={styles.chartTitle}>
+                        Tren {indicator.label} · {chartData.length} hari terakhir
+                      </Text>
+                      <LineChart
+                        data={chartData}
+                        width={chartWidth}
+                        height={140}
+                        thickness={2.5}
+                        color={colors.brandPrimary}
+                        areaChart
+                        startFillColor={colors.brandPrimary}
+                        endFillColor={colors.brandPrimary}
+                        startOpacity={0.2}
+                        endOpacity={0.02}
+                        curved
+                        hideDataPoints
+                        hideRules
+                        xAxisColor={colors.border}
+                        yAxisColor={colors.border}
+                        yAxisTextStyle={{ color: colors.muted, fontSize: 9 }}
+                        xAxisLabelTextStyle={{ color: colors.muted, fontSize: 8 }}
+                        noOfSections={3}
+                        formatYLabel={(v: any) =>
+                          indicator.key === "gold"
+                            ? shortIDR(parseFloat(v)).replace("Rp ", "")
+                            : Number(parseFloat(v)).toLocaleString("id-ID", {
+                                maximumFractionDigits: 0,
+                              })
+                        }
+                      />
+                    </>
+                  ) : (
+                    <Text style={styles.chartEmpty}>Data tren belum tersedia.</Text>
+                  )}
+                </View>
+              )}
 
               {indicator.editable && !editMode && (
                 <Pressable
@@ -587,7 +691,68 @@ function IndicatorSheet({
                   </Pressable>
                 </View>
               )}
-            </>
+
+              {isLoan && (
+                <View style={styles.loanBox}>
+                  <Text style={styles.loanTitle}>Kalkulator Cicilan</Text>
+                  <Text style={styles.loanHint}>
+                    Estimasi cepat pakai suku bunga acuan (bisa diubah).
+                  </Text>
+                  <Text style={styles.editLabel}>Jumlah Pinjaman (Rp)</Text>
+                  <TextInput
+                    value={loanAmt}
+                    onChangeText={(v) =>
+                      setLoanAmt(
+                        v.replace(/[^0-9]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                      )
+                    }
+                    keyboardType="number-pad"
+                    style={styles.editInput}
+                    placeholder="0"
+                    placeholderTextColor={colors.muted}
+                    testID="loan-amount-input"
+                  />
+                  <View style={styles.loanRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.editLabel}>Tenor (bulan)</Text>
+                      <TextInput
+                        value={loanTenor}
+                        onChangeText={(v) => setLoanTenor(v.replace(/[^0-9]/g, ""))}
+                        keyboardType="number-pad"
+                        style={styles.editInput}
+                        placeholderTextColor={colors.muted}
+                        testID="loan-tenor-input"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.editLabel}>Bunga/thn (%)</Text>
+                      <TextInput
+                        value={loanRate}
+                        onChangeText={(v) => setLoanRate(v.replace(/[^0-9.,]/g, ""))}
+                        keyboardType="numeric"
+                        style={styles.editInput}
+                        placeholderTextColor={colors.muted}
+                        testID="loan-rate-input"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.loanResult}>
+                    <View>
+                      <Text style={styles.loanResLabel}>Cicilan / bulan</Text>
+                      <Text style={styles.loanResValue} testID="loan-monthly">
+                        {monthly > 0 ? formatIDR(Math.round(monthly)) : "—"}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={styles.loanResLabel}>Total bayar</Text>
+                      <Text style={styles.loanResTotal}>
+                        {totalPay > 0 ? formatIDR(Math.round(totalPay)) : "—"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
           )}
         </View>
       </View>
@@ -868,6 +1033,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
+    maxHeight: "90%",
   },
   indSheetHead: {
     flexDirection: "row",
@@ -920,4 +1086,43 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   indSaveText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  /* Responsive desktop layout */
+  twoColWrap: { width: "100%", maxWidth: 1180, alignSelf: "center" },
+  twoCol: { flexDirection: "row", alignItems: "flex-start" },
+  col: { flex: 1, minWidth: 0 },
+
+  /* Indicator history chart + loan calc */
+  chartWrap: { marginTop: 14, alignItems: "center" },
+  chartTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.onSurface,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  chartEmpty: { fontSize: 12, color: colors.muted, paddingVertical: 20 },
+  loanBox: {
+    marginTop: 16,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 14,
+    padding: 14,
+  },
+  loanTitle: { fontSize: 14, fontWeight: "800", color: colors.onSurface },
+  loanHint: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 6 },
+  loanRow: { flexDirection: "row", gap: 12 },
+  loanResult: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  loanResLabel: { fontSize: 10, color: colors.muted },
+  loanResValue: { fontSize: 18, fontWeight: "800", color: colors.brand, marginTop: 2 },
+  loanResTotal: { fontSize: 14, fontWeight: "700", color: colors.onSurface, marginTop: 2 },
 });

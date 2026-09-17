@@ -90,7 +90,8 @@ export default function CalendarScreen() {
     return arr;
   }, [year, month]);
 
-  const cellSize = (width - 32) / 7;
+  const cellSize = (Math.min(width, 900) - 32) / 7;
+  const isWide = width >= 900;
 
   function shiftMonth(delta: number) {
     let m = month + delta;
@@ -165,7 +166,7 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, width: "100%", maxWidth: isWide ? 820 : undefined, alignSelf: "center" }}>
         {/* Month totals */}
         <View style={styles.totalsCard}>
           <View style={styles.totalCol}>

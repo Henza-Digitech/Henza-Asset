@@ -17,8 +17,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Feather from "@react-native-vector-icons/feather";
 import { useRouter } from "expo-router";
 
-import { api } from "@/src/api";
+import { api, formatIDR } from "@/src/api";
 import { colors } from "@/src/theme";
+import { useResponsive } from "@/src/responsive";
 
 function todayStr() {
   const d = new Date();
@@ -41,6 +42,7 @@ type FormState = {
   name: string;
   quantity: string;
   unit: string;
+  price: string;
   entry_date: string;
   exit_date: string;
   notes: string;
@@ -50,6 +52,7 @@ const EMPTY: FormState = {
   name: "",
   quantity: "",
   unit: "pcs",
+  price: "",
   entry_date: todayStr(),
   exit_date: "",
   notes: "",
@@ -59,6 +62,7 @@ export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
+  const { isWide } = useResponsive();
 
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -85,6 +89,7 @@ export default function InventoryScreen() {
         name: form.name.trim(),
         quantity: parseFloat(form.quantity.replace(/\./g, "").replace(",", ".")) || 0,
         unit: form.unit.trim() || "pcs",
+        price: parseFloat(form.price.replace(/\./g, "")) || 0,
         entry_date: form.entry_date.trim() || todayStr(),
         exit_date: form.exit_date.trim() || null,
         notes: form.notes.trim(),
@@ -114,6 +119,9 @@ export default function InventoryScreen() {
         name: it.name || "",
         quantity: String(it.quantity ?? ""),
         unit: it.unit || "pcs",
+        price: it.price
+          ? String(it.price).replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+          : "",
         entry_date: (it.entry_date || "").slice(0, 10) || todayStr(),
         exit_date: (it.exit_date || "").slice(0, 10),
         notes: it.notes || "",
@@ -149,6 +157,8 @@ export default function InventoryScreen() {
     in_stock_qty: 0,
     out_items: 0,
     out_qty: 0,
+    in_stock_value: 0,
+    total_value: 0,
   };
 
   return (
@@ -180,9 +190,33 @@ export default function InventoryScreen() {
       <FlatList
         data={items.data || []}
         keyExtractor={(i) => i.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{
+          padding: 16,
+          paddingBottom: insets.bottom + 24,
+          width: "100%",
+          maxWidth: isWide ? 900 : undefined,
+          alignSelf: "center",
+        }}
         ListHeaderComponent={
           <View>
+            {/* Nilai persediaan */}
+            <View style={styles.valueCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.valueLabel}>Nilai Persediaan · di gudang</Text>
+                <Text style={styles.valueAmount} testID="inventory-value">
+                  {formatIDR(st.in_stock_value || 0)}
+                </Text>
+                {(st.total_value || 0) !== (st.in_stock_value || 0) && (
+                  <Text style={styles.valueSub}>
+                    Total tercatat: {formatIDR(st.total_value || 0)}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.valueIcon}>
+                <Feather name="dollar-sign" size={22} color={colors.brand} />
+              </View>
+            </View>
+
             {/* Key statistics */}
             <View style={styles.statGrid}>
               <StatCard
@@ -247,6 +281,11 @@ export default function InventoryScreen() {
                     {out ? "Keluar" : "Di gudang"}
                   </Text>
                 </View>
+                {item.price > 0 && (
+                  <Text style={styles.priceLine} numberOfLines={1}>
+                    {formatIDR(item.price)}/{item.unit} · {formatIDR(item.price * item.quantity)}
+                  </Text>
+                )}
               </View>
               <Text style={[styles.cell, { flex: 1, textAlign: "right", fontWeight: "700" }]}>
                 {fmtQty(item.quantity)}
@@ -313,6 +352,22 @@ export default function InventoryScreen() {
                   />
                 </View>
               </View>
+
+              <Text style={styles.label}>Harga per Unit (Rp)</Text>
+              <TextInput
+                placeholder="0"
+                value={form.price}
+                onChangeText={(v) =>
+                  setForm({
+                    ...form,
+                    price: v.replace(/[^0-9]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, "."),
+                  })
+                }
+                keyboardType="number-pad"
+                style={styles.input}
+                placeholderTextColor={colors.muted}
+                testID="inventory-price-input"
+              />
 
               <Text style={styles.label}>Tanggal Masuk (YYYY-MM-DD)</Text>
               <View style={styles.dateRow}>
@@ -455,6 +510,26 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, color: colors.onSurface, fontSize: 13 },
 
+  valueCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.brandTertiary,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  valueLabel: { fontSize: 12, fontWeight: "600", color: colors.brand },
+  valueAmount: { fontSize: 24, fontWeight: "800", color: colors.brand, marginTop: 4 },
+  valueSub: { fontSize: 11, color: colors.onBrandTertiary, marginTop: 4 },
+  valueIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  priceLine: { fontSize: 10, color: colors.muted, marginTop: 3, fontWeight: "600" },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   statCard: {
     width: "47.5%",

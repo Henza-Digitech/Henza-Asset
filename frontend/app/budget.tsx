@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 
 import { api, formatIDR } from "@/src/api";
 import { colors } from "@/src/theme";
+import { useResponsive } from "@/src/responsive";
 import { EXPENSE_CATEGORIES, categoryMeta } from "@/src/categories";
 import { CategoryIcon } from "@/src/components/CategoryIcon";
 
@@ -36,6 +37,7 @@ export default function BudgetScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
+  const { isWide } = useResponsive();
 
   const now = new Date();
   const [scope, setScope] = useState<Scope>("personal");
@@ -146,7 +148,7 @@ export default function BudgetScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, width: "100%", maxWidth: isWide ? 820 : undefined, alignSelf: "center" }}>
         {/* Summary card */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryTop}>

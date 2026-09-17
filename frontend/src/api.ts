@@ -113,6 +113,7 @@ export const api = {
 
   // market indicators
   marketIndicators: () => req(`/market/indicators`),
+  marketHistory: (key: string) => req(`/market/history?key=${key}`),
   updateMarketConfig: (body: any) =>
     req(`/market/config`, { method: "PUT", body: JSON.stringify(body) }),
 

@@ -952,6 +952,7 @@ class InventoryItemIn(BaseModel):
     name: str
     quantity: float = 0
     unit: str = "pcs"
+    price: float = 0  # harga per unit (Rp)
     entry_date: Optional[str] = None  # tanggal masuk YYYY-MM-DD
     exit_date: Optional[str] = None   # tanggal keluar (opsional)
     notes: str = ""
@@ -989,6 +990,8 @@ async def inventory_stats():
     out_items = [i for i in items if i.get("exit_date")]
     in_stock_qty = sum(i.get("quantity", 0) for i in in_stock_items)
     out_qty = sum(i.get("quantity", 0) for i in out_items)
+    in_stock_value = sum(i.get("quantity", 0) * i.get("price", 0) for i in in_stock_items)
+    total_value = sum(i.get("quantity", 0) * i.get("price", 0) for i in items)
     return {
         "total_items": total_items,
         "total_qty": total_qty,
@@ -996,6 +999,8 @@ async def inventory_stats():
         "in_stock_qty": in_stock_qty,
         "out_items": len(out_items),
         "out_qty": out_qty,
+        "in_stock_value": in_stock_value,
+        "total_value": total_value,
     }
 
 
@@ -1036,6 +1041,23 @@ def _yahoo_meta(symbol: str) -> dict:
     )
     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
     return r.json()["chart"]["result"][0]["meta"]
+
+
+def _yahoo_series(symbol: str, rng: str = "1mo", interval: str = "1d") -> list:
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        f"?interval={interval}&range={rng}"
+    )
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+    res = r.json()["chart"]["result"][0]
+    ts = res.get("timestamp", []) or []
+    closes = res["indicators"]["quote"][0].get("close", []) or []
+    out = []
+    for t, c in zip(ts, closes):
+        if c is None:
+            continue
+        out.append((int(t), float(c)))
+    return out
 
 
 def _fetch_live_market() -> dict:
@@ -1148,6 +1170,32 @@ async def update_market_config(payload: MarketConfigIn):
         )
     doc = await db.market_config.find_one({"id": "config"}, {"_id": 0})
     return doc or {}
+
+
+@api_router.get("/market/history")
+async def market_history(key: str = "jci", points: int = 10):
+    """Recent daily closes for gold (IDR/gram) or IHSG for a mini trend chart."""
+    def _work():
+        if key == "gold":
+            series = _yahoo_series("GC=F", "1mo", "1d")
+            fx = float(_yahoo_meta("IDR=X")["regularMarketPrice"])
+            conv = fx / 31.1035
+            return [(t, round(v * conv)) for t, v in series]
+        return [(t, round(v, 2)) for t, v in _yahoo_series("%5EJKSE", "1mo", "1d")]
+
+    try:
+        data = await asyncio.to_thread(_work)
+    except Exception:
+        data = []
+    data = data[-points:]
+    out = []
+    for t, v in data:
+        dt = datetime.fromtimestamp(t, tz=timezone.utc)
+        out.append({"label": dt.strftime("%d/%m"), "value": v})
+    change_pct = 0.0
+    if len(out) >= 2 and out[0]["value"]:
+        change_pct = round((out[-1]["value"] - out[0]["value"]) / out[0]["value"] * 100, 2)
+    return {"key": key, "points": out, "change_pct": change_pct}
 
 
 # ============ ROOT ============
